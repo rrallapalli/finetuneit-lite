@@ -10,6 +10,18 @@ source .venv/bin/activate
 
 python -m pip install --upgrade pip setuptools wheel
 
+echo "Checking PyTorch/CUDA from RunPod image..."
+python - <<'PY'
+import torch
+
+print("Torch:", torch.__version__)
+print("CUDA available:", torch.cuda.is_available())
+print("CUDA version:", torch.version.cuda)
+
+if not torch.cuda.is_available():
+    raise RuntimeError("CUDA is not available. Use a RunPod PyTorch CUDA template.")
+PY
+
 echo "Installing project requirements..."
 pip install -r requirements.txt
 
