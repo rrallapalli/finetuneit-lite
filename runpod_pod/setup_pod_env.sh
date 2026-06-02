@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -e
-python -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
+
+pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
-pip install "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
+pip install unsloth_zoo
+pip install unsloth
+
 echo "RunPod pod environment setup completed."

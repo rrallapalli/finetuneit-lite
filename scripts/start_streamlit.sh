@@ -2,7 +2,11 @@
 set -e
 
 cd "$(dirname "$0")/.."
-source .venv/bin/activate
+
+if [ -d ".venv" ]; then
+    source .venv/bin/activate
+fi
+
 export PYTHONPATH=.
 
 streamlit run app/ui/streamlit_app.py \
