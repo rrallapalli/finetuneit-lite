@@ -146,15 +146,21 @@ def run_training_from_config(config: dict) -> dict:
             save_total_limit=int(training_config.get("save_total_limit", 2)),
         )
 
+        eval_dataset = (
+        dataset["validation"]
+        if "validation" in dataset
+        else dataset["test"]
+        )
+
         trainer = SFTTrainer(
-            model=model,
-            tokenizer=tokenizer,
-            train_dataset=dataset["train"],
-            eval_dataset=dataset.get("validation"),
-            dataset_text_field="text",
-            max_seq_length=max_seq_length,
-            args=args,
-            packing=False,
+        model=model,
+        tokenizer=tokenizer,
+        train_dataset=dataset["train"],
+        eval_dataset=eval_dataset,
+        dataset_text_field="text",
+        max_seq_length=max_seq_length,
+        args=args,
+        packing=False,
         )
 
         train_result = trainer.train()
