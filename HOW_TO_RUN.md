@@ -10,7 +10,7 @@ git clone https://github.com/rrallapalli/finetuneit-lite.git
 cd finetuneit-lite
 chmod +x scripts/*.sh
 bash scripts/setup_runpod_gpu_env.sh
-bash scripts/configure_secrets.sh
+bash scripts/setup_tokens.sh
 ```
 
 ### Terminal 1 — backend
