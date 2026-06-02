@@ -1,28 +1,41 @@
+# Web/API
 fastapi
 uvicorn
-streamlit
 requests
 python-dotenv
 pydantic
 pyyaml
+
+# UI
+streamlit
+streamlit-autorefresh
+
+# Data
 pandas
 numpy
-torch
+
+# Hugging Face / Fine-Tuning
 transformers
 peft
 trl
 datasets
 accelerate
 bitsandbytes
+sentencepiece
+
+# Experiment Tracking
 wandb
 huggingface_hub
-runpod
+
+# Evaluation
 evaluate
 bert-score
 rouge-score
 nltk
 sacrebleu
-sentencepiece
+
+# Utilities
 tqdm
 
-streamlit-autorefresh
+# RunPod
+runpod

@@ -91,17 +91,58 @@ def safe_get(url, params):
 
 
 
-def get_last_wandb_run_id():
-    result = st.session_state.get("last_train_result", {})
+def _unwrap_training_result(result):
+    """Return the inner training result regardless of local or RunPod response shape."""
     if not isinstance(result, dict):
-        return ""
-    if result.get("wandb_run_id"):
-        return result.get("wandb_run_id")
+        return {}
+
+    if result.get("wandb_run_id") or result.get("wandb_run_url"):
+        return result
+
     for key in ["output", "result", "data"]:
         nested = result.get(key)
-        if isinstance(nested, dict) and nested.get("wandb_run_id"):
-            return nested.get("wandb_run_id")
-    return ""
+        if isinstance(nested, dict):
+            if nested.get("wandb_run_id") or nested.get("wandb_run_url"):
+                return nested
+            deeper = _unwrap_training_result(nested)
+            if deeper:
+                return deeper
+
+    return result
+
+
+def get_last_wandb_context():
+    result = _unwrap_training_result(st.session_state.get("last_train_result", {}))
+
+    return {
+        "entity": (
+            result.get("wandb_entity")
+            or st.session_state.get("last_wandb_entity")
+            or wandb_cfg.get("entity", "")
+        ),
+        "project": (
+            result.get("wandb_project")
+            or st.session_state.get("last_wandb_project")
+            or wandb_cfg.get("project", "finetuneit-lite")
+        ),
+        "run_id": result.get("wandb_run_id") or "",
+        "run_url": result.get("wandb_run_url") or "",
+        "run_name": result.get("experiment_name") or result.get("run_name") or "Latest training run",
+    }
+
+
+def get_last_wandb_run_id():
+    return get_last_wandb_context().get("run_id", "")
+
+
+def render_clickable_run_table(df):
+    column_config = {}
+    if "url" in df.columns:
+        column_config["url"] = st.column_config.LinkColumn("W&B Run", display_text="Open run")
+    if "run_url" in df.columns:
+        column_config["run_url"] = st.column_config.LinkColumn("W&B Run", display_text="Open run")
+
+    st.dataframe(df, use_container_width=True, column_config=column_config)
 
 
 def update_inference_from_model(model_record):
@@ -362,16 +403,31 @@ with tab_train:
 
 with tab_live:
     st.header("Live W&B Training Metrics")
-    st.caption("Auto-populates from the latest training submission when available.")
+    st.caption("Uses W&B metadata returned by the latest training run. No retyping of entity/project/run ID is needed.")
 
-    last_result = st.session_state.get("last_train_result", {})
-    col_a, col_b, col_c = st.columns(3)
-    with col_a:
-        wandb_entity = st.text_input("W&B Entity", st.session_state.get("last_wandb_entity", wandb_cfg.get("entity", "")), key="live_entity")
-    with col_b:
-        wandb_project = st.text_input("W&B Project", st.session_state.get("last_wandb_project", wandb_cfg.get("project", "finetuneit-lite")), key="live_project")
-    with col_c:
-        wandb_run_id = st.text_input("W&B Run ID", get_last_wandb_run_id(), key="live_run_id")
+    wandb_context = get_last_wandb_context()
+    wandb_entity = wandb_context.get("entity")
+    wandb_project = wandb_context.get("project")
+    wandb_run_id = wandb_context.get("run_id")
+
+    if wandb_context.get("run_url"):
+        st.markdown(f"Latest training run: [{wandb_context.get('run_name')}]({wandb_context.get('run_url')})")
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("W&B Entity", wandb_entity or "Not available")
+    c2.metric("W&B Project", wandb_project or "Not available")
+    c3.metric("W&B Run ID", wandb_run_id or "Not available")
+
+    with st.expander("Override W&B run manually"):
+        override_enabled = st.checkbox("Use manual W&B values", value=False)
+        if override_enabled:
+            col_a, col_b, col_c = st.columns(3)
+            with col_a:
+                wandb_entity = st.text_input("W&B Entity", wandb_entity or "", key="live_entity")
+            with col_b:
+                wandb_project = st.text_input("W&B Project", wandb_project or "finetuneit-lite", key="live_project")
+            with col_c:
+                wandb_run_id = st.text_input("W&B Run ID", wandb_run_id or "", key="live_run_id")
 
     refresh = st.checkbox("Auto-refresh metrics", value=False)
     refresh_seconds = st.slider("Refresh interval seconds", 5, 60, int(ui_cfg.get("refresh_seconds", 10)))
@@ -381,7 +437,7 @@ with tab_live:
 
     if st.button("Fetch Metrics") or refresh:
         if not wandb_entity or not wandb_project or not wandb_run_id:
-            st.warning("Enter W&B entity, project, and run ID.")
+            st.warning("Start a training run first, or open the manual override and enter W&B entity, project, and run ID.")
         else:
             run_info = safe_get(f"{API_BASE}/wandb/run", {
                 "entity": wandb_entity,
@@ -424,19 +480,30 @@ with tab_live:
 
 with tab_registry:
     st.header("Experiment Registry & Model Ranking")
-    st.caption("Uses the latest submitted W&B entity/project by default, but can be overridden. Compare runs, rank adapters, and promote a champion model.")
+    st.caption("Uses W&B entity/project from the latest training run and lists all runs with clickable W&B URLs.")
+
+    wandb_context = get_last_wandb_context()
+    registry_entity = wandb_context.get("entity")
+    registry_project = wandb_context.get("project")
 
     col_a, col_b, col_c = st.columns(3)
-    with col_a:
-        registry_entity = st.text_input("W&B Entity", st.session_state.get("last_wandb_entity", wandb_cfg.get("entity", "")), key="registry_entity")
-    with col_b:
-        registry_project = st.text_input("W&B Project", st.session_state.get("last_wandb_project", wandb_cfg.get("project", "finetuneit-lite")), key="registry_project")
+    col_a.metric("W&B Entity", registry_entity or "Not available")
+    col_b.metric("W&B Project", registry_project or "Not available")
     with col_c:
         max_runs = st.number_input("Max Runs", 5, 200, int(ui_cfg.get("default_max_runs", 50)))
 
+    with st.expander("Override W&B project manually"):
+        override_registry = st.checkbox("Use manual W&B entity/project", value=False, key="registry_override")
+        if override_registry:
+            col_x, col_y = st.columns(2)
+            with col_x:
+                registry_entity = st.text_input("W&B Entity", registry_entity or "", key="registry_entity")
+            with col_y:
+                registry_project = st.text_input("W&B Project", registry_project or "finetuneit-lite", key="registry_project")
+
     if st.button("Load Experiment Registry"):
         if not registry_entity or not registry_project:
-            st.warning("Enter W&B entity and project.")
+            st.warning("Start a training run first, or open the manual override and enter W&B entity/project.")
         else:
             registry_response = safe_get(
                 f"{API_BASE}/registry/runs",
@@ -458,7 +525,7 @@ with tab_registry:
             "BERTScore (F1)", "SQuAD F1", "Average Latency (sec)", "url"
         ]
         display_cols = [c for c in display_cols if c in df.columns]
-        st.dataframe(df[display_cols], use_container_width=True)
+        render_clickable_run_table(df[display_cols])
 
         st.subheader("Compare Selected Runs")
         run_options = {
